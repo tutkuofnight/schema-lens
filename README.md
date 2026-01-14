@@ -1,73 +1,91 @@
-# React + TypeScript + Vite
+# 🗃️ SchemaLens
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**SchemaLens** is a powerful, interactive database schema visualizer tailored for modern developers. It instantly transforms your **Drizzle ORM**, **Prisma**, or generic **SQL** schemas into beautiful, interactive entity-relationship diagrams.
 
-Currently, two official plugins are available:
+![SchemaLens Banner](public/banner.png) <!-- You can replace this with a real screenshot later -->
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## ✨ Features
 
-## React Compiler
+- **Multi-Format Support**:
+  - 🌧️ **Drizzle ORM**: Paste your Drizzle schema definitions directly.
+  - 💎 **Prisma**: Visualize your `schema.prisma` files.
+  - 🐘 **SQL**: Support for standard SQL `CREATE TABLE` statements.
+- **Interactive Diagrams**:
+  - Drag and arrange tables to organize your view.
+  - Zoom and pan to explore large schemas.
+  - Auto-layout capabilities.
+- **Real-time Parsing**: See changes in the diagram instantly as you edit the code.
+- **Code Editor**: Integrated Monaco Editor for a premium coding experience.
+- **Privacy Focused**: All parsing happens client-side. Your schema code never leaves your browser.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🛠️ Tech Stack
 
-## Expanding the ESLint configuration
+Built with the latest modern web technologies:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Framework**: [React 19](https://react.dev/)
+- **Build Tool**: [Vite](https://vitejs.dev/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **State Management**: [Zustand](https://github.com/pmndrs/zustand)
+- **Visualization**: [React Flow (@xyflow/react)](https://reactflow.dev/)
+- **Editor**: [Monaco Editor](https://microsoft.github.io/monaco-editor/)
+- **Icons**: [Lucide React](https://lucide.dev/)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 🚀 Getting Started
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Follow these steps to run SchemaLens locally on your machine.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### Prerequisites
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+- [Node.js](https://nodejs.org/) (v18 or higher)
+- [Bun](https://bun.sh/) (Optional, but recommended as `bun.lock` is included)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Installation
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/tutkuofnight/schema-lens.git
+   cd schema-lens
+   ```
+
+2. **Install dependencies**
+   Using Bun (recommended):
+
+   ```bash
+   bun install
+   ```
+
+   Or using npm:
+
+   ```bash
+   npm install
+   ```
+
+3. **Start the development server**
+
+   ```bash
+   bun run dev
+   # or
+   npm run dev
+   ```
+
+4. **Open your browser**
+   Navigate to `http://localhost:5173` to start using SchemaLens.
+
+## 📖 Usage
+
+1. Open the application.
+2. Select your schema format (Drizzle, Prisma, or SQL) from the sidebar.
+3. Paste your schema code into the editor on the right (or bottom on mobile).
+4. Watch the diagram generate automatically!
+5. Drag tables to rearrange them.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
