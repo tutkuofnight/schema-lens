@@ -155,7 +155,7 @@ export function Sidebar() {
         <section className="p-4 border-t border-border-default">
           <div className="flex items-center justify-between text-xs text-text-muted">
             <a
-              href="https://github.com"
+              href="https://github.com/tutkuofnight/schema-lens"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 hover:text-text-secondary transition-colors"
