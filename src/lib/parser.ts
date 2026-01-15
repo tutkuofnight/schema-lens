@@ -45,10 +45,6 @@ function parseDrizzleSchema(code: string): ParsedSchema {
     const tableName = match[2];
     variableToTableMap[variableName] = tableName;
 
-    console.log(
-      `[Drizzle Parser] Found table: "${tableName}" (variable: ${variableName})`
-    );
-
     // Find the opening brace position (it's at the end of our match)
     const openBracePos = match.index + match[0].length - 1;
 
@@ -62,10 +58,6 @@ function parseDrizzleSchema(code: string): ParsedSchema {
     }
 
     const columnsBlock = cleanCode.substring(openBracePos + 1, pos - 1);
-    console.log(
-      `[Drizzle Parser] Columns block for ${tableName}:`,
-      columnsBlock
-    );
 
     const columns: Column[] = [];
 
@@ -90,15 +82,10 @@ function parseDrizzleSchema(code: string): ParsedSchema {
     }
     if (current.trim()) parts.push(current.trim());
 
-    console.log(`[Drizzle Parser] Column parts for ${tableName}:`, parts);
-
     for (const part of parts) {
       // Match column definitions: columnName: type(...)
       const colMatch = part.match(/^\s*(\w+)\s*:\s*(\w+)\s*\(/);
       if (!colMatch) {
-        console.log(
-          `[Drizzle Parser] Skipping part (no column match): "${part}"`
-        );
         continue;
       }
 
@@ -143,8 +130,6 @@ function parseDrizzleSchema(code: string): ParsedSchema {
         isNullable,
       };
 
-      console.log(`[Drizzle Parser]   Column: ${colName} (${colType})`);
-
       if (refMatch) {
         column.references = {
           table: refMatch[1],
@@ -155,10 +140,6 @@ function parseDrizzleSchema(code: string): ParsedSchema {
       columns.push(column);
     }
 
-    // Always add the table, even if it has no columns
-    console.log(
-      `[Drizzle Parser] Adding table "${tableName}" with ${columns.length} columns`
-    );
     tables.push({ name: tableName, columns });
   }
 
@@ -184,7 +165,6 @@ function parseDrizzleSchema(code: string): ParsedSchema {
     }
   }
 
-  console.log(`[Drizzle Parser] Total tables found: ${tables.length}`);
   return { tables, relations };
 }
 
@@ -371,7 +351,7 @@ export function parseSchema(
       return parsePrismaSchema(code);
     case "sql":
       return parseSQLSchema(code);
-    default:
+    default: {
       // Try each parser
       let result = parseDrizzleSchema(code);
       if (result.tables.length > 0) return result;
@@ -381,5 +361,6 @@ export function parseSchema(
 
       result = parseSQLSchema(code);
       return result;
+    }
   }
 }

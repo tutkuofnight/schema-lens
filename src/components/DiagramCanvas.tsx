@@ -27,17 +27,9 @@ function DiagramCanvasInner() {
   const { fitView } = useReactFlow();
   const prevNodeCount = useRef(nodes.length);
 
-  console.log(
-    `[DiagramCanvas] Rendering with ${nodes.length} nodes:`,
-    nodes.map((n) => `${n.id} at (${n.position.x}, ${n.position.y})`)
-  );
-
   // Fit view when node count changes
   useEffect(() => {
     if (nodes.length !== prevNodeCount.current) {
-      console.log(
-        `[DiagramCanvas] Node count changed from ${prevNodeCount.current} to ${nodes.length}, calling fitView`
-      );
       prevNodeCount.current = nodes.length;
       // Small timeout to allow React Flow to process new nodes
       setTimeout(() => {
