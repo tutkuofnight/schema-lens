@@ -13,6 +13,8 @@ interface ColumnBuilderBase<T = unknown> {
   default(value: T): this;
   /** Set default to current timestamp (for date/time columns) */
   defaultNow(): this;
+  /** Set default to a random UUID (for uuid columns) */
+  defaultRandom(): this;
   /** Make this column the primary key */
   primaryKey(): this;
   /** Add a unique constraint to this column */
@@ -21,6 +23,10 @@ interface ColumnBuilderBase<T = unknown> {
   references<TRef>(ref: () => TRef, options?: { onDelete?: 'cascade' | 'restrict' | 'no action' | 'set null' | 'set default'; onUpdate?: 'cascade' | 'restrict' | 'no action' | 'set null' | 'set default' }): this;
   /** Add a generated expression */
   generatedAlwaysAs(expression: any): this;
+  /** Cast the column to a specific TypeScript type */
+  $type<TType>(): ColumnBuilderBase<TType>;
+  /** Set array type */
+  array(): this;
 }
 
 interface PgColumnBuilder<T = unknown> extends ColumnBuilderBase<T> {}
@@ -42,8 +48,9 @@ export function bigserial(name: string): PgColumnBuilder<bigint>;
 /**
  * Signed 4-byte integer (-2147483648 to 2147483647)
  * @param name - Column name in the database
+ * @param config - Optional configuration
  */
-export function integer(name: string): PgColumnBuilder<number>;
+export function integer(name: string, config?: { mode?: 'number' | 'timestamp' | 'timestamp_ms'; length?: number }): PgColumnBuilder<number>;
 
 /**
  * Signed 8-byte integer
@@ -147,15 +154,15 @@ export function interval(name: string): PgColumnBuilder<string>;
 
 /**
  * JSON data stored as text
- * @param name - Column name in the database
+ * @param name - Column name in the database (optional)
  */
-export function json<T = unknown>(name: string): PgColumnBuilder<T>;
+export function json<T = unknown>(name?: string): PgColumnBuilder<T>;
 
 /**
  * JSON data stored in binary format (faster queries)
- * @param name - Column name in the database
+ * @param name - Column name in the database (optional)
  */
-export function jsonb<T = unknown>(name: string): PgColumnBuilder<T>;
+export function jsonb<T = unknown>(name?: string): PgColumnBuilder<T>;
 
 // ==================== UUID TYPE ====================
 
