@@ -1,15 +1,17 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
-  useNodesState,
-  useEdgesState,
   type OnNodesChange,
   type OnEdgesChange,
   type NodeTypes,
   BackgroundVariant,
+  applyNodeChanges,
+  applyEdgeChanges,
+  useReactFlow,
+  ReactFlowProvider,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useDiagramStore } from "@/store/diagramStore";
@@ -19,72 +21,106 @@ const nodeTypes: NodeTypes = {
   tableNode: TableNode,
 } as NodeTypes;
 
-export function DiagramCanvas() {
-  const { nodes: storeNodes, edges: storeEdges } = useDiagramStore();
+function DiagramCanvasInner() {
+  const { nodes, edges, setNodes, setEdges, updateNodePosition } =
+    useDiagramStore();
+  const { fitView } = useReactFlow();
+  const prevNodeCount = useRef(nodes.length);
 
-  const [, , onNodesChange] = useNodesState(storeNodes);
-  const [, , onEdgesChange] = useEdgesState(storeEdges);
+  console.log(
+    `[DiagramCanvas] Rendering with ${nodes.length} nodes:`,
+    nodes.map((n) => `${n.id} at (${n.position.x}, ${n.position.y})`)
+  );
 
-  // Sync nodes with store
+  // Fit view when node count changes
+  useEffect(() => {
+    if (nodes.length !== prevNodeCount.current) {
+      console.log(
+        `[DiagramCanvas] Node count changed from ${prevNodeCount.current} to ${nodes.length}, calling fitView`
+      );
+      prevNodeCount.current = nodes.length;
+      // Small timeout to allow React Flow to process new nodes
+      setTimeout(() => {
+        fitView({ padding: 0.2 });
+      }, 100);
+    }
+  }, [nodes.length, fitView]);
+
   const handleNodesChange: OnNodesChange = useCallback(
     (changes) => {
-      onNodesChange(changes);
-      // Update store on drag end
+      // Apply changes and update store
+      const updatedNodes = applyNodeChanges(changes, nodes);
+      setNodes(updatedNodes);
+
+      // Also update positions in store for drag operations
       changes.forEach((change) => {
         if (change.type === "position" && change.position) {
-          useDiagramStore
-            .getState()
-            .updateNodePosition(change.id, change.position);
+          updateNodePosition(change.id, change.position);
         }
       });
     },
-    [onNodesChange]
+    [nodes, setNodes, updateNodePosition]
   );
 
   const handleEdgesChange: OnEdgesChange = useCallback(
     (changes) => {
-      onEdgesChange(changes);
+      const updatedEdges = applyEdgeChanges(changes, edges);
+      setEdges(updatedEdges);
     },
-    [onEdgesChange]
+    [edges, setEdges]
   );
 
   return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={handleNodesChange}
+      onEdgesChange={handleEdgesChange}
+      nodeTypes={nodeTypes}
+      fitView
+      fitViewOptions={{ padding: 0.2 }}
+      minZoom={0.1}
+      maxZoom={2}
+      panOnScroll={false}
+      selectionOnDrag={false}
+      panActivationKeyCode={null}
+      selectionKeyCode={null}
+      multiSelectionKeyCode={null}
+      deleteKeyCode={null}
+      defaultEdgeOptions={{
+        type: "smoothstep",
+        animated: true,
+        style: { stroke: "#58a6ff", strokeWidth: 2 },
+      }}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background
+        variant={BackgroundVariant.Dots}
+        gap={20}
+        size={1}
+        color="#30363d"
+      />
+      <Controls
+        className="!bg-bg-surface !border-border-default !rounded-lg !shadow-lg"
+        showZoom
+        showFitView
+        showInteractive
+      />
+      <MiniMap
+        className="!bg-bg-surface !border-border-default !rounded-lg"
+        nodeColor={() => "#238636"}
+        maskColor="rgba(13, 17, 23, 0.8)"
+      />
+    </ReactFlow>
+  );
+}
+
+export function DiagramCanvas() {
+  return (
     <div className="w-full h-full bg-bg-primary">
-      <ReactFlow
-        nodes={storeNodes}
-        edges={storeEdges}
-        onNodesChange={handleNodesChange}
-        onEdgesChange={handleEdgesChange}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.1}
-        maxZoom={2}
-        defaultEdgeOptions={{
-          type: "smoothstep",
-          animated: true,
-          style: { stroke: "#58a6ff", strokeWidth: 2 },
-        }}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1}
-          color="#30363d"
-        />
-        <Controls
-          className="!bg-bg-surface !border-border-default !rounded-lg !shadow-lg"
-          showZoom
-          showFitView
-          showInteractive
-        />
-        <MiniMap
-          className="!bg-bg-surface !border-border-default !rounded-lg"
-          nodeColor={() => "#238636"}
-          maskColor="rgba(13, 17, 23, 0.8)"
-        />
-      </ReactFlow>
+      <ReactFlowProvider>
+        <DiagramCanvasInner />
+      </ReactFlowProvider>
     </div>
   );
 }

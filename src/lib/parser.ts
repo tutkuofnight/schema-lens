@@ -8,21 +8,16 @@ import type {
 
 // Detect schema format
 export function detectSchemaFormat(code: string): SchemaFormat {
-  if (
-    code.includes("pgTable") ||
-    code.includes("mysqlTable") ||
-    code.includes("sqliteTable") ||
-    code.includes("drizzle-orm")
-  ) {
+  if (/(pg|mysql|sqlite)Table|drizzle-orm/.test(code)) {
     return "drizzle";
   }
   if (
-    (code.includes("@id") && code.includes("@relation")) ||
-    code.includes("model ")
+    (/@id/.test(code) && /@relation/.test(code)) ||
+    /model\s+\w+\s*\{/.test(code)
   ) {
     return "prisma";
   }
-  if (code.includes("CREATE TABLE") || code.includes("create table")) {
+  if (/CREATE\s+TABLE|create\s+table/i.test(code)) {
     return "sql";
   }
   return "auto";
@@ -32,31 +27,46 @@ export function detectSchemaFormat(code: string): SchemaFormat {
 function parseDrizzleSchema(code: string): ParsedSchema {
   const tables: Table[] = [];
   const relations: Relation[] = [];
+  const variableToTableMap: Record<string, string> = {};
 
   // Remove comments
   const cleanCode = code
     .replace(/\/\/.*$/gm, "")
     .replace(/\/\*[\s\S]*?\*\//g, "");
 
-  // Find all table definitions
-  const tableRegex =
-    /(?:export\s+)?(?:const\s+)?(\w+)\s*=\s*(?:pg|mysql|sqlite)Table\s*\(\s*['"]([\w_]+)['"]\s*,\s*\{/g;
+  // Simple approach: Find all pgTable/mysqlTable/sqliteTable calls
+  // Pattern: variableName = pgTable("tableName", { columns })
+  const tablePattern =
+    /(\w+)\s*=\s*(?:\w+\.)?(?:pg|mysql|sqlite)Table\s*\(\s*["']([^"']+)["']\s*,\s*\{/g;
 
-  let tableMatch;
-  while ((tableMatch = tableRegex.exec(cleanCode)) !== null) {
-    const tableName = tableMatch[2];
-    const startPos = tableMatch.index + tableMatch[0].length;
+  let match;
+  while ((match = tablePattern.exec(cleanCode)) !== null) {
+    const variableName = match[1];
+    const tableName = match[2];
+    variableToTableMap[variableName] = tableName;
 
-    // Find matching closing brace
+    console.log(
+      `[Drizzle Parser] Found table: "${tableName}" (variable: ${variableName})`
+    );
+
+    // Find the opening brace position (it's at the end of our match)
+    const openBracePos = match.index + match[0].length - 1;
+
+    // Find matching closing brace for the columns object
     let depth = 1;
-    let pos = startPos;
+    let pos = openBracePos + 1;
     while (depth > 0 && pos < cleanCode.length) {
       if (cleanCode[pos] === "{") depth++;
       if (cleanCode[pos] === "}") depth--;
       pos++;
     }
 
-    const columnsBlock = cleanCode.substring(startPos, pos - 1);
+    const columnsBlock = cleanCode.substring(openBracePos + 1, pos - 1);
+    console.log(
+      `[Drizzle Parser] Columns block for ${tableName}:`,
+      columnsBlock
+    );
+
     const columns: Column[] = [];
 
     // Split by top-level commas (not inside parentheses or braces)
@@ -80,26 +90,40 @@ function parseDrizzleSchema(code: string): ParsedSchema {
     }
     if (current.trim()) parts.push(current.trim());
 
+    console.log(`[Drizzle Parser] Column parts for ${tableName}:`, parts);
+
     for (const part of parts) {
-      // Match: columnName: type('dbName', options).modifiers
-      const match = part.match(/^(\w+)\s*:\s*(\w+)\s*\(/);
-      if (!match) continue;
-
-      const colName = match[1];
-      const colType = match[2];
-
-      // Find where type function ends (matching parenthesis)
-      const typeStart = match[0].length;
-      let pDepth = 1;
-      let typeEnd = typeStart;
-
-      for (let i = typeStart; i < part.length && pDepth > 0; i++) {
-        if (part[i] === "(") pDepth++;
-        if (part[i] === ")") pDepth--;
-        if (pDepth === 0) typeEnd = i + 1;
+      // Match column definitions: columnName: type(...)
+      const colMatch = part.match(/^\s*(\w+)\s*:\s*(\w+)\s*\(/);
+      if (!colMatch) {
+        console.log(
+          `[Drizzle Parser] Skipping part (no column match): "${part}"`
+        );
+        continue;
       }
 
-      const modifiers = part.substring(typeEnd);
+      const colName = colMatch[1];
+      const colType = colMatch[2];
+
+      // Find modifiers after the type function call
+      let pDepth = 0;
+      let typeEnd = -1;
+      let started = false;
+
+      for (let i = 0; i < part.length; i++) {
+        if (part[i] === "(") {
+          pDepth++;
+          started = true;
+        } else if (part[i] === ")") {
+          pDepth--;
+        }
+        if (started && pDepth === 0) {
+          typeEnd = i + 1;
+          break;
+        }
+      }
+
+      const modifiers = typeEnd !== -1 ? part.substring(typeEnd) : "";
 
       const isPrimaryKey = modifiers.includes(".primaryKey()");
       const isUnique = modifiers.includes(".unique()");
@@ -119,30 +143,48 @@ function parseDrizzleSchema(code: string): ParsedSchema {
         isNullable,
       };
 
+      console.log(`[Drizzle Parser]   Column: ${colName} (${colType})`);
+
       if (refMatch) {
         column.references = {
           table: refMatch[1],
           column: refMatch[2],
         };
-
-        relations.push({
-          id: `${tableName}-${colName}-${refMatch[1]}-${refMatch[2]}`,
-          sourceTable: tableName,
-          sourceColumn: colName,
-          targetTable: refMatch[1],
-          targetColumn: refMatch[2],
-          relationType: "one-to-many",
-        });
       }
 
       columns.push(column);
     }
 
-    if (columns.length > 0) {
-      tables.push({ name: tableName, columns });
+    // Always add the table, even if it has no columns
+    console.log(
+      `[Drizzle Parser] Adding table "${tableName}" with ${columns.length} columns`
+    );
+    tables.push({ name: tableName, columns });
+  }
+
+  // Resolve references and build relations
+  for (const table of tables) {
+    for (const column of table.columns) {
+      if (column.references) {
+        const targetVarName = column.references.table;
+        const targetTableName =
+          variableToTableMap[targetVarName] || targetVarName;
+
+        relations.push({
+          id: `${table.name}-${column.name}-${targetTableName}-${column.references.column}`,
+          sourceTable: table.name,
+          sourceColumn: column.name,
+          targetTable: targetTableName,
+          targetColumn: column.references.column,
+          relationType: "one-to-many",
+        });
+
+        column.references.table = targetTableName;
+      }
     }
   }
 
+  console.log(`[Drizzle Parser] Total tables found: ${tables.length}`);
   return { tables, relations };
 }
 
