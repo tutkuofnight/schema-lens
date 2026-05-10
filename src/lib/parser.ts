@@ -114,7 +114,7 @@ function parseDrizzleSchema(code: string): ParsedSchema {
 
       const isPrimaryKey = modifiers.includes(".primaryKey()");
       const isUnique = modifiers.includes(".unique()");
-      const isNullable = !modifiers.includes(".notNull()");
+      const isNullable = !isPrimaryKey && !modifiers.includes(".notNull()");
 
       // Check for references
       const refMatch = modifiers.match(
@@ -280,7 +280,10 @@ function parseSQLSchema(code: string): ParsedSchema {
           const pkCols = pkMatch[1].split(",").map((c) => c.trim());
           pkCols.forEach((pk) => {
             const col = columns.find((c) => c.name === pk);
-            if (col) col.isPrimaryKey = true;
+            if (col) {
+              col.isPrimaryKey = true;
+              col.isNullable = false;
+            }
           });
         }
         continue;
@@ -293,7 +296,7 @@ function parseSQLSchema(code: string): ParsedSchema {
 
         const isPrimaryKey = /PRIMARY\s+KEY/i.test(modifiers);
         const isUnique = /UNIQUE/i.test(modifiers);
-        const isNullable = !/NOT\s+NULL/i.test(modifiers);
+        const isNullable = !isPrimaryKey && !/NOT\s+NULL/i.test(modifiers);
 
         // Check for REFERENCES
         const refMatch = modifiers.match(
