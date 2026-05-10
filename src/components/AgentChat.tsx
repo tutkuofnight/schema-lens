@@ -1,5 +1,15 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Bot, Key, Loader2, Send, Sparkles, X } from "lucide-react";
+import {
+  Bot,
+  Check,
+  Clipboard,
+  Code2,
+  Key,
+  Loader2,
+  Send,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { useDiagramStore } from "@/store/diagramStore";
 import type { SchemaFormat } from "@/types/schema";
 
@@ -52,6 +62,23 @@ type AnthropicResponse = {
   error?: {
     message?: string;
   };
+};
+
+type HandoffPayload = {
+  version: 1;
+  source: "SchemaLens";
+  createdAt: string;
+  format: SchemaFormat;
+  code: string;
+  parsedSchema: unknown;
+  diagram: {
+    nodes: unknown[];
+    edges: unknown[];
+  };
+  agentChat: {
+    messages: Array<Pick<ChatMessage, "role" | "content" | "schemaCode">>;
+  };
+  instructions: string[];
 };
 
 const PROVIDER_PRESETS: ProviderPreset[] = [
@@ -168,6 +195,17 @@ const initialMessage: ChatMessage = {
 
 function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function encodeBase64(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+
+  return window.btoa(binary);
 }
 
 function getApiKeySessionKey(providerId: string) {
@@ -401,6 +439,66 @@ function sendProviderRequest(request: ProviderRequest) {
   return sendOpenAICompatibleRequest(request);
 }
 
+function buildHandoffPayload({
+  code,
+  format,
+  schema,
+  nodes,
+  edges,
+  messages,
+}: {
+  code: string;
+  format: SchemaFormat;
+  schema: unknown;
+  nodes: unknown[];
+  edges: unknown[];
+  messages: ChatMessage[];
+}): HandoffPayload {
+  return {
+    version: 1,
+    source: "SchemaLens",
+    createdAt: new Date().toISOString(),
+    format,
+    code,
+    parsedSchema: schema,
+    diagram: {
+      nodes,
+      edges,
+    },
+    agentChat: {
+      messages: messages.slice(-10).map((message) => ({
+        role: message.role,
+        content: message.content,
+        schemaCode: message.schemaCode,
+      })),
+    },
+    instructions: [
+      "Read this SchemaLens handoff bundle before making code changes.",
+      "Use `format` and `code` as the source schema authored in SchemaLens.",
+      "Use `parsedSchema` to understand tables, columns, primary keys, foreign keys, uniqueness, nullability, and relations.",
+      "Use `diagram.nodes` positions only as visual context; do not treat them as database metadata.",
+      "Adapt the schema to the target project's database/ORM conventions and preserve existing project patterns.",
+      "Do not look for API keys in this file; SchemaLens intentionally excludes provider secrets from handoff payloads.",
+    ],
+  };
+}
+
+function buildCurlCommand(payload: HandoffPayload) {
+  const payloadJson = JSON.stringify(payload, null, 2);
+  const dataUrl = `data:application/json;base64,${encodeBase64(payloadJson)}`;
+
+  return `curl -L '${dataUrl}' -o schema-lens-handoff.json`;
+}
+
+function buildCodeAgentPrompt() {
+  return [
+    "Read schema-lens-handoff.json.",
+    "Understand the schema code, parsed schema, relations, and SchemaLens notes.",
+    "Apply the schema to this project using the repository's existing database/ORM conventions.",
+    "Keep the implementation scoped, update related migrations/types/seed data when relevant, and run the project's validation commands.",
+  ].join(" ");
+}
+
 interface AgentChatProps {
   isOpen: boolean;
   onClose: () => void;
@@ -412,7 +510,8 @@ export function AgentChat({
   onClose,
   onSchemaApplied,
 }: AgentChatProps) {
-  const { code, format, replaceCodeAndParse } = useDiagramStore();
+  const { code, format, schema, nodes, edges, replaceCodeAndParse } =
+    useDiagramStore();
   const [providerId, setProviderId] = useState(DEFAULT_PROVIDER.id);
   const provider =
     PROVIDER_PRESETS.find((preset) => preset.id === providerId) ??
@@ -426,11 +525,49 @@ export function AgentChat({
   const [messages, setMessages] = useState<ChatMessage[]>([initialMessage]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [copiedHandoffField, setCopiedHandoffField] = useState<
+    "curl" | "prompt" | "json" | null
+  >(null);
 
   const endpoint = useMemo(
     () => getProviderEndpoint(provider, baseUrl),
     [baseUrl, provider]
   );
+  const handoffPayload = useMemo(
+    () =>
+      buildHandoffPayload({
+        code,
+        format,
+        schema,
+        nodes,
+        edges,
+        messages,
+      }),
+    [code, edges, format, messages, nodes, schema]
+  );
+  const handoffJson = useMemo(
+    () => JSON.stringify(handoffPayload, null, 2),
+    [handoffPayload]
+  );
+  const handoffCurlCommand = useMemo(
+    () => buildCurlCommand(handoffPayload),
+    [handoffPayload]
+  );
+  const codeAgentPrompt = useMemo(() => buildCodeAgentPrompt(), []);
+
+  const copyToClipboard = async (
+    value: string,
+    field: "curl" | "prompt" | "json"
+  ) => {
+    try {
+      await window.navigator.clipboard.writeText(value);
+      setCopiedHandoffField(field);
+      window.setTimeout(() => setCopiedHandoffField(null), 1800);
+    } catch {
+      setError("Clipboard access failed. Select and copy the text manually.");
+    }
+  };
 
   const handleProviderChange = (nextProviderId: string) => {
     const nextProvider =
@@ -640,6 +777,115 @@ ${buildContextMessage(code, format)}`,
           a backend. Keys are kept only in this tab's sessionStorage until the
           tab is closed.
         </p>
+
+        <div className="rounded-xl border border-border-default bg-bg-primary p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+                <Code2 className="h-4 w-4 text-accent-blue" />
+                Code Agent Handoff
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-text-secondary">
+                Generate a curl-readable bundle with the current schema, parsed
+                metadata, diagram context, and code-agent instructions. API keys
+                are never included.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setHandoffOpen((isOpen) => !isOpen)}
+              className="rounded-lg border border-border-default px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent-blue hover:text-accent-blue"
+            >
+              {handoffOpen ? "Hide" : "Hand off to Code Agent"}
+            </button>
+          </div>
+
+          {handoffOpen && (
+            <div className="mt-3 space-y-3">
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
+                    Curl command
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyToClipboard(handoffCurlCommand, "curl")
+                    }
+                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
+                  >
+                    {copiedHandoffField === "curl" ? (
+                      <Check className="h-3.5 w-3.5 text-success" />
+                    ) : (
+                      <Clipboard className="h-3.5 w-3.5" />
+                    )}
+                    {copiedHandoffField === "curl" ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <textarea
+                  readOnly
+                  rows={4}
+                  value={handoffCurlCommand}
+                  className="w-full resize-none rounded-lg border border-border-default bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary outline-none"
+                />
+              </div>
+
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
+                    Code agent prompt
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(codeAgentPrompt, "prompt")}
+                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
+                  >
+                    {copiedHandoffField === "prompt" ? (
+                      <Check className="h-3.5 w-3.5 text-success" />
+                    ) : (
+                      <Clipboard className="h-3.5 w-3.5" />
+                    )}
+                    {copiedHandoffField === "prompt" ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <textarea
+                  readOnly
+                  rows={3}
+                  value={codeAgentPrompt}
+                  className="w-full resize-none rounded-lg border border-border-default bg-bg-surface px-3 py-2 text-xs leading-5 text-text-primary outline-none"
+                />
+              </div>
+
+              <details className="rounded-lg border border-border-default bg-bg-surface">
+                <summary className="cursor-pointer px-3 py-2 text-xs font-medium uppercase tracking-wider text-text-muted">
+                  Preview handoff JSON
+                </summary>
+                <div className="border-t border-border-default p-3">
+                  <div className="mb-1.5 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(handoffJson, "json")}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
+                    >
+                      {copiedHandoffField === "json" ? (
+                        <Check className="h-3.5 w-3.5 text-success" />
+                      ) : (
+                        <Clipboard className="h-3.5 w-3.5" />
+                      )}
+                      {copiedHandoffField === "json" ? "Copied" : "Copy JSON"}
+                    </button>
+                  </div>
+                  <textarea
+                    readOnly
+                    rows={8}
+                    value={handoffJson}
+                    className="w-full resize-none rounded-lg border border-border-default bg-bg-primary px-3 py-2 font-mono text-xs text-text-primary outline-none"
+                  />
+                </div>
+              </details>
+            </div>
+          )}
+        </div>
       </section>
 
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
