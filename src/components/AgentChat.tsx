@@ -4,6 +4,7 @@ import { useDiagramStore } from "@/store/diagramStore";
 import type { SchemaFormat } from "@/types/schema";
 
 type ChatRole = "assistant" | "user";
+type ProviderKind = "openai-compatible" | "anthropic";
 
 type ChatMessage = {
   id: string;
@@ -13,12 +14,26 @@ type ChatMessage = {
   schemaApplied?: boolean;
 };
 
-type ChatCompletionMessage = {
-  role: "system" | ChatRole;
-  content: string;
+type ProviderPreset = {
+  id: string;
+  label: string;
+  kind: ProviderKind;
+  baseUrl: string;
+  model: string;
+  apiKeyPlaceholder: string;
+  note: string;
 };
 
-type ChatCompletionResponse = {
+type ProviderRequest = {
+  provider: ProviderPreset;
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+  systemPrompt: string;
+  messages: ChatMessage[];
+};
+
+type OpenAICompatibleResponse = {
   choices?: Array<{
     message?: {
       content?: string;
@@ -29,8 +44,119 @@ type ChatCompletionResponse = {
   };
 };
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-4o-mini";
+type AnthropicResponse = {
+  content?: Array<{
+    type?: string;
+    text?: string;
+  }>;
+  error?: {
+    message?: string;
+  };
+};
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    id: "openai",
+    label: "OpenAI",
+    kind: "openai-compatible",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini",
+    apiKeyPlaceholder: "sk-...",
+    note: "Uses the OpenAI Chat Completions API.",
+  },
+  {
+    id: "anthropic",
+    label: "Claude / Anthropic",
+    kind: "anthropic",
+    baseUrl: "https://api.anthropic.com/v1",
+    model: "claude-3-5-sonnet-latest",
+    apiKeyPlaceholder: "sk-ant-...",
+    note: "Uses Anthropic Messages API directly from the browser.",
+  },
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    kind: "openai-compatible",
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "deepseek-chat",
+    apiKeyPlaceholder: "sk-...",
+    note: "DeepSeek exposes an OpenAI-compatible chat endpoint.",
+  },
+  {
+    id: "kimi",
+    label: "Kimi / Moonshot",
+    kind: "openai-compatible",
+    baseUrl: "https://api.moonshot.ai/v1",
+    model: "moonshot-v1-8k",
+    apiKeyPlaceholder: "sk-...",
+    note: "Kimi is available through Moonshot's OpenAI-compatible API.",
+  },
+  {
+    id: "gemini",
+    label: "Gemini",
+    kind: "openai-compatible",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    model: "gemini-2.0-flash",
+    apiKeyPlaceholder: "AIza...",
+    note: "Uses Google's OpenAI-compatible Gemini endpoint.",
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    kind: "openai-compatible",
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "openai/gpt-4o-mini",
+    apiKeyPlaceholder: "sk-or-...",
+    note: "Use OpenRouter model ids such as anthropic/claude-3.5-sonnet.",
+  },
+  {
+    id: "groq",
+    label: "Groq",
+    kind: "openai-compatible",
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "llama-3.3-70b-versatile",
+    apiKeyPlaceholder: "gsk_...",
+    note: "Groq supports OpenAI-compatible chat completions.",
+  },
+  {
+    id: "mistral",
+    label: "Mistral",
+    kind: "openai-compatible",
+    baseUrl: "https://api.mistral.ai/v1",
+    model: "mistral-large-latest",
+    apiKeyPlaceholder: "...",
+    note: "Mistral supports OpenAI-compatible chat completions.",
+  },
+  {
+    id: "xai",
+    label: "xAI",
+    kind: "openai-compatible",
+    baseUrl: "https://api.x.ai/v1",
+    model: "grok-2-latest",
+    apiKeyPlaceholder: "xai-...",
+    note: "xAI exposes an OpenAI-compatible API.",
+  },
+  {
+    id: "custom-openai",
+    label: "Custom OpenAI-compatible",
+    kind: "openai-compatible",
+    baseUrl: "https://api.example.com/v1",
+    model: "your-model",
+    apiKeyPlaceholder: "provider key",
+    note: "For any provider that implements /chat/completions.",
+  },
+  {
+    id: "custom-anthropic",
+    label: "Custom Anthropic-compatible",
+    kind: "anthropic",
+    baseUrl: "https://api.example.com/v1",
+    model: "your-claude-model",
+    apiKeyPlaceholder: "provider key",
+    note: "For Anthropic-compatible Messages API providers.",
+  },
+];
+
+const DEFAULT_PROVIDER = PROVIDER_PRESETS[0];
 
 const initialMessage: ChatMessage = {
   id: "welcome",
@@ -59,8 +185,15 @@ function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.trim().replace(/\/+$/, "");
 }
 
-function getChatCompletionsUrl(baseUrl: string) {
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl || DEFAULT_BASE_URL);
+function getProviderEndpoint(provider: ProviderPreset, baseUrl: string) {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl || provider.baseUrl);
+
+  if (provider.kind === "anthropic") {
+    return normalizedBaseUrl.endsWith("/messages")
+      ? normalizedBaseUrl
+      : `${normalizedBaseUrl}/messages`;
+  }
+
   return normalizedBaseUrl.endsWith("/chat/completions")
     ? normalizedBaseUrl
     : `${normalizedBaseUrl}/chat/completions`;
@@ -69,19 +202,24 @@ function getChatCompletionsUrl(baseUrl: string) {
 function extractSchemaCode(content: string) {
   const codeBlockRegex =
     /```(?:\s*(sql|typescript|ts|tsx|javascript|js|prisma|graphql|drizzle))?\s*\n([\s\S]*?)```/gi;
+  const supportedLanguages = [
+    "sql",
+    "typescript",
+    "ts",
+    "tsx",
+    "javascript",
+    "js",
+    "prisma",
+    "graphql",
+    "drizzle",
+  ];
   let match: RegExpExecArray | null;
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
     const language = match[1]?.toLowerCase();
     const code = match[2]?.trim();
 
-    if (
-      code &&
-      (!language ||
-        ["sql", "typescript", "ts", "tsx", "javascript", "js", "prisma", "graphql", "drizzle"].includes(
-          language
-        ))
-    ) {
+    if (code && (!language || supportedLanguages.includes(language))) {
       return code;
     }
   }
@@ -116,8 +254,116 @@ ${code}
 \`\`\``;
 }
 
-function getApiErrorMessage(response: ChatCompletionResponse) {
-  return response.error?.message ?? "The AI provider returned an unexpected response.";
+function getProviderErrorMessage(
+  response: OpenAICompatibleResponse | AnthropicResponse
+) {
+  return (
+    response.error?.message ?? "The AI provider returned an unexpected response."
+  );
+}
+
+function getOpenAICompatibleContent(response: OpenAICompatibleResponse) {
+  return response.choices?.[0]?.message?.content?.trim();
+}
+
+function getAnthropicContent(response: AnthropicResponse) {
+  return response.content
+    ?.map((part) => (part.type === "text" || !part.type ? part.text ?? "" : ""))
+    .join("")
+    .trim();
+}
+
+async function sendOpenAICompatibleRequest({
+  provider,
+  apiKey,
+  model,
+  baseUrl,
+  systemPrompt,
+  messages,
+}: ProviderRequest) {
+  const response = await fetch(getProviderEndpoint(provider, baseUrl), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+      ],
+      temperature: 0.2,
+    }),
+  });
+
+  const data = (await response.json()) as OpenAICompatibleResponse;
+
+  if (!response.ok) {
+    throw new Error(getProviderErrorMessage(data));
+  }
+
+  const content = getOpenAICompatibleContent(data);
+
+  if (!content) {
+    throw new Error("The AI provider did not return a message.");
+  }
+
+  return content;
+}
+
+async function sendAnthropicRequest({
+  provider,
+  apiKey,
+  model,
+  baseUrl,
+  systemPrompt,
+  messages,
+}: ProviderRequest) {
+  const response = await fetch(getProviderEndpoint(provider, baseUrl), {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      system: systemPrompt,
+      messages: messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+      max_tokens: 4096,
+      temperature: 0.2,
+    }),
+  });
+
+  const data = (await response.json()) as AnthropicResponse;
+
+  if (!response.ok) {
+    throw new Error(getProviderErrorMessage(data));
+  }
+
+  const content = getAnthropicContent(data);
+
+  if (!content) {
+    throw new Error("The AI provider did not return a message.");
+  }
+
+  return content;
+}
+
+function sendProviderRequest(request: ProviderRequest) {
+  if (request.provider.kind === "anthropic") {
+    return sendAnthropicRequest(request);
+  }
+
+  return sendOpenAICompatibleRequest(request);
 }
 
 interface AgentChatProps {
@@ -132,15 +378,40 @@ export function AgentChat({
   onSchemaApplied,
 }: AgentChatProps) {
   const { code, format, replaceCodeAndParse } = useDiagramStore();
+  const [providerId, setProviderId] = useState(DEFAULT_PROVIDER.id);
+  const provider =
+    PROVIDER_PRESETS.find((preset) => preset.id === providerId) ??
+    DEFAULT_PROVIDER;
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
-  const [model, setModel] = useState(DEFAULT_MODEL);
+  const [baseUrl, setBaseUrl] = useState(provider.baseUrl);
+  const [model, setModel] = useState(provider.model);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([initialMessage]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const endpoint = useMemo(() => getChatCompletionsUrl(baseUrl), [baseUrl]);
+  const endpoint = useMemo(
+    () => getProviderEndpoint(provider, baseUrl),
+    [baseUrl, provider]
+  );
+
+  const handleProviderChange = (nextProviderId: string) => {
+    const nextProvider =
+      PROVIDER_PRESETS.find((preset) => preset.id === nextProviderId) ??
+      DEFAULT_PROVIDER;
+
+    setProviderId(nextProvider.id);
+    setBaseUrl(nextProvider.baseUrl);
+    setModel(nextProvider.model);
+    setApiKey("");
+    setError(null);
+  };
+
+  const handleClose = () => {
+    setApiKey("");
+    setError(null);
+    onClose();
+  };
 
   const applySchemaCode = (schemaCode: string) => {
     replaceCodeAndParse(schemaCode);
@@ -169,7 +440,7 @@ export function AgentChat({
     }
 
     if (!trimmedApiKey) {
-      setError("Enter your API key to use Agent Chat.");
+      setError("Enter your provider API key to use Agent Chat.");
       return;
     }
 
@@ -190,40 +461,17 @@ export function AgentChat({
     setError(null);
     setIsLoading(true);
 
-    const requestMessages: ChatCompletionMessage[] = [
-      { role: "system", content: buildSystemPrompt(format) },
-      { role: "system", content: buildContextMessage(code, format) },
-      ...nextMessages.slice(-8).map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
-    ];
-
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${trimmedApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: trimmedModel,
-          messages: requestMessages,
-          temperature: 0.2,
-        }),
+      const assistantContent = await sendProviderRequest({
+        provider,
+        apiKey: trimmedApiKey,
+        model: trimmedModel,
+        baseUrl,
+        systemPrompt: `${buildSystemPrompt(format)}
+
+${buildContextMessage(code, format)}`,
+        messages: nextMessages.slice(-8),
       });
-
-      const data = (await response.json()) as ChatCompletionResponse;
-
-      if (!response.ok) {
-        throw new Error(getApiErrorMessage(data));
-      }
-
-      const assistantContent = data.choices?.[0]?.message?.content?.trim();
-
-      if (!assistantContent) {
-        throw new Error("The AI provider did not return a message.");
-      }
 
       const schemaCode = extractSchemaCode(assistantContent) ?? undefined;
       const assistantMessage: ChatMessage = {
@@ -247,12 +495,13 @@ export function AgentChat({
       setError(message);
     } finally {
       setIsLoading(false);
+      setApiKey("");
     }
   };
 
   return (
     <aside
-      className={`fixed right-4 top-16 bottom-4 z-50 flex w-[min(440px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-2xl transition-all duration-300 ${
+      className={`fixed right-4 top-16 bottom-4 z-50 flex w-[min(460px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border-default bg-bg-surface shadow-2xl transition-all duration-300 ${
         isOpen
           ? "translate-x-0 opacity-100"
           : "pointer-events-none translate-x-6 opacity-0"
@@ -267,13 +516,13 @@ export function AgentChat({
           <div>
             <h2 className="font-semibold text-text-primary">Agent Chat</h2>
             <p className="text-xs text-text-secondary">
-              Uses your API key directly from this browser.
+              Provider keys are cleared after each request and on close.
             </p>
           </div>
         </div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
           aria-label="Close Agent Chat"
         >
@@ -283,6 +532,23 @@ export function AgentChat({
 
       <section className="space-y-3 border-b border-border-default p-4">
         <label className="block">
+          <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-muted">
+            Provider
+          </span>
+          <select
+            value={providerId}
+            onChange={(event) => handleProviderChange(event.target.value)}
+            className="w-full rounded-lg border border-border-default bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-accent-blue"
+          >
+            {PROVIDER_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
           <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-text-muted">
             <Key className="h-3.5 w-3.5" />
             API Key
@@ -291,12 +557,14 @@ export function AgentChat({
             type="password"
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
-            placeholder="sk-..."
+            placeholder={provider.apiKeyPlaceholder}
+            autoComplete="off"
+            spellCheck={false}
             className="w-full rounded-lg border border-border-default bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent-blue"
           />
         </label>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_140px]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_150px]">
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-muted">
               Base URL
@@ -305,6 +573,8 @@ export function AgentChat({
               type="url"
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
               className="w-full rounded-lg border border-border-default bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-accent-blue"
             />
           </label>
@@ -316,14 +586,17 @@ export function AgentChat({
               type="text"
               value={model}
               onChange={(event) => setModel(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
               className="w-full rounded-lg border border-border-default bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-accent-blue"
             />
           </label>
         </div>
 
         <p className="text-xs text-text-muted">
-          Endpoint: <span className="font-mono">{endpoint}</span>. The key is
-          not saved by SchemaLens.
+          {provider.note} Endpoint: <span className="font-mono">{endpoint}</span>
+          . SchemaLens never writes provider keys to localStorage, the store, or
+          a backend, and clears the input after every request.
         </p>
       </section>
 
@@ -374,7 +647,11 @@ export function AgentChat({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="border-t border-border-default p-4">
+      <form
+        onSubmit={handleSubmit}
+        className="border-t border-border-default p-4"
+        autoComplete="off"
+      >
         <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-text-muted">
           Message
         </label>

@@ -17,7 +17,7 @@
 - **Real-time Parsing**: See changes in the diagram instantly as you edit the code.
 - **Code Editor**: Integrated Monaco Editor for a premium coding experience.
 - **Flexible Workspace Layout**: Move the editor between bottom, left, and right positions, and place the sidebar on either side.
-- **Agent Chat**: Use your own OpenAI-compatible API key to generate or refine schemas through chat and apply them directly to the editor.
+- **Agent Chat**: Use your own provider API key with OpenAI-compatible providers, Claude/Anthropic, DeepSeek, Kimi, Gemini, OpenRouter, Groq, Mistral, xAI, or custom endpoints to generate or refine schemas through chat and apply them directly to the editor.
 - **Privacy Focused**: All parsing happens client-side. Your schema code never leaves your browser.
 
 ## 🛠️ Tech Stack
@@ -81,7 +81,7 @@ Follow these steps to run SchemaLens locally on your machine.
 3. Paste your schema code into the editor and move it to the bottom, left, or right as needed.
 4. Watch the diagram generate automatically!
 5. Drag tables to rearrange them.
-6. Open Agent Chat, enter your API key, and ask the agent to create or update a schema. Returned schema code blocks are applied to the editor automatically.
+6. Open Agent Chat, choose a provider, enter your API key, and ask the agent to create or update a schema. Keys are not stored by SchemaLens and are cleared after each request; returned schema code blocks are applied to the editor automatically.
 
 ## 🤝 Contributing
 
