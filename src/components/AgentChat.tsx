@@ -157,6 +157,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
 ];
 
 const DEFAULT_PROVIDER = PROVIDER_PRESETS[0];
+const API_KEY_SESSION_PREFIX = "schema-lens-agent-api-key:";
 
 const initialMessage: ChatMessage = {
   id: "welcome",
@@ -167,6 +168,40 @@ const initialMessage: ChatMessage = {
 
 function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getApiKeySessionKey(providerId: string) {
+  return `${API_KEY_SESSION_PREFIX}${providerId}`;
+}
+
+function readSessionApiKey(providerId: string) {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  try {
+    return window.sessionStorage.getItem(getApiKeySessionKey(providerId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSessionApiKey(providerId: string, apiKey: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const storageKey = getApiKeySessionKey(providerId);
+
+    if (apiKey) {
+      window.sessionStorage.setItem(storageKey, apiKey);
+    } else {
+      window.sessionStorage.removeItem(storageKey);
+    }
+  } catch {
+    // sessionStorage can be unavailable in restricted browser contexts.
+  }
 }
 
 function getLanguageForFormat(format: SchemaFormat) {
@@ -382,7 +417,9 @@ export function AgentChat({
   const provider =
     PROVIDER_PRESETS.find((preset) => preset.id === providerId) ??
     DEFAULT_PROVIDER;
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(() =>
+    readSessionApiKey(DEFAULT_PROVIDER.id)
+  );
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl);
   const [model, setModel] = useState(provider.model);
   const [input, setInput] = useState("");
@@ -403,14 +440,18 @@ export function AgentChat({
     setProviderId(nextProvider.id);
     setBaseUrl(nextProvider.baseUrl);
     setModel(nextProvider.model);
-    setApiKey("");
+    setApiKey(readSessionApiKey(nextProvider.id));
     setError(null);
   };
 
   const handleClose = () => {
-    setApiKey("");
     setError(null);
     onClose();
+  };
+
+  const handleApiKeyChange = (nextApiKey: string) => {
+    setApiKey(nextApiKey);
+    writeSessionApiKey(provider.id, nextApiKey);
   };
 
   const applySchemaCode = (schemaCode: string) => {
@@ -495,7 +536,6 @@ ${buildContextMessage(code, format)}`,
       setError(message);
     } finally {
       setIsLoading(false);
-      setApiKey("");
     }
   };
 
@@ -516,7 +556,8 @@ ${buildContextMessage(code, format)}`,
           <div>
             <h2 className="font-semibold text-text-primary">Agent Chat</h2>
             <p className="text-xs text-text-secondary">
-              Provider keys are cleared after each request and on close.
+              Provider keys stay for this tab session and clear when the tab
+              closes.
             </p>
           </div>
         </div>
@@ -556,7 +597,7 @@ ${buildContextMessage(code, format)}`,
           <input
             type="password"
             value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
+            onChange={(event) => handleApiKeyChange(event.target.value)}
             placeholder={provider.apiKeyPlaceholder}
             autoComplete="off"
             spellCheck={false}
@@ -596,7 +637,8 @@ ${buildContextMessage(code, format)}`,
         <p className="text-xs text-text-muted">
           {provider.note} Endpoint: <span className="font-mono">{endpoint}</span>
           . SchemaLens never writes provider keys to localStorage, the store, or
-          a backend, and clears the input after every request.
+          a backend. Keys are kept only in this tab's sessionStorage until the
+          tab is closed.
         </p>
       </section>
 
