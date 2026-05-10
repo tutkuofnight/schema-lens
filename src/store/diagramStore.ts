@@ -10,6 +10,9 @@ import type {
 import { parseSchema, detectSchemaFormat } from "@/lib/parser";
 import { drizzleSchema, prismaSchema, sqlSchema } from "@/schemas";
 
+export type SidebarPosition = "left" | "right";
+export type EditorPosition = "bottom" | "left" | "right";
+
 interface DiagramState {
   // Code Editor
   code: string;
@@ -24,6 +27,9 @@ interface DiagramState {
 
   // UI State
   sidebarOpen: boolean;
+  sidebarPosition: SidebarPosition;
+  editorPosition: EditorPosition;
+  editorSize: number;
   selectedTable: string | null;
 
   // Actions
@@ -38,6 +44,9 @@ interface DiagramState {
     position: { x: number; y: number }
   ) => void;
   toggleSidebar: () => void;
+  setSidebarPosition: (position: SidebarPosition) => void;
+  setEditorPosition: (position: EditorPosition) => void;
+  setEditorSize: (size: number) => void;
   setSelectedTable: (tableName: string | null) => void;
 }
 
@@ -113,6 +122,9 @@ export const useDiagramStore = create<DiagramState>()(
       nodes: [],
       edges: [],
       sidebarOpen: true,
+      sidebarPosition: "left",
+      editorPosition: "bottom",
+      editorSize: 40,
       selectedTable: null,
 
       // Actions
@@ -211,6 +223,13 @@ export const useDiagramStore = create<DiagramState>()(
       toggleSidebar: () =>
         set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
+      setSidebarPosition: (position) => set({ sidebarPosition: position }),
+
+      setEditorPosition: (position) => set({ editorPosition: position }),
+
+      setEditorSize: (size) =>
+        set({ editorSize: Math.min(80, Math.max(20, size)) }),
+
       setSelectedTable: (tableName) => set({ selectedTable: tableName }),
     }),
     {
@@ -221,6 +240,9 @@ export const useDiagramStore = create<DiagramState>()(
         format: state.format,
         nodes: state.nodes,
         sidebarOpen: state.sidebarOpen,
+        sidebarPosition: state.sidebarPosition,
+        editorPosition: state.editorPosition,
+        editorSize: state.editorSize,
       }),
       // After rehydration, reparse the code to rebuild schema and edges
       onRehydrateStorage: () => (state) => {

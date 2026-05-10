@@ -24,22 +24,40 @@ const formatOptions: {
 ];
 
 export function Sidebar() {
-  const { format, loadSample, sidebarOpen, toggleSidebar, schema } =
-    useDiagramStore();
+  const {
+    format,
+    loadSample,
+    sidebarOpen,
+    sidebarPosition,
+    toggleSidebar,
+    schema,
+  } = useDiagramStore();
+  const isRightPosition = sidebarPosition === "right";
 
   return (
     <>
       {!sidebarOpen && (
         <button
           onClick={toggleSidebar}
-          className="fixed top-4 left-4 z-50 p-2 bg-bg-surface border border-border-default rounded-lg hover:bg-bg-elevated transition-colors"
+          className={`fixed top-4 z-50 p-2 bg-bg-surface border border-border-default rounded-lg hover:bg-bg-elevated transition-colors ${
+            isRightPosition ? "right-4" : "left-4"
+          }`}
+          aria-label="Show sidebar"
         >
-          <PanelLeft className="w-5 h-5 text-text-secondary" />
+          <PanelLeft
+            className={`w-5 h-5 text-text-secondary ${
+              isRightPosition ? "rotate-180" : ""
+            }`}
+          />
         </button>
       )}
 
       <aside
-        className={`h-full bg-bg-surface border-r border-border-default flex flex-col transition-all duration-300 ${
+        className={`h-full bg-bg-surface flex flex-col transition-all duration-300 ${
+          isRightPosition
+            ? "border-l border-border-default"
+            : "border-r border-border-default"
+        } ${
           sidebarOpen ? "w-80" : "w-0 overflow-hidden"
         }`}
       >
@@ -60,8 +78,13 @@ export function Sidebar() {
           <button
             onClick={toggleSidebar}
             className="p-1.5 hover:bg-bg-elevated rounded-lg transition-colors"
+            aria-label="Hide sidebar"
           >
-            <PanelLeftClose className="w-5 h-5 text-text-secondary" />
+            <PanelLeftClose
+              className={`w-5 h-5 text-text-secondary ${
+                isRightPosition ? "rotate-180" : ""
+              }`}
+            />
           </button>
         </div>
 
