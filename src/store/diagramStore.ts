@@ -34,6 +34,7 @@ interface DiagramState {
 
   // Actions
   setCode: (code: string) => void;
+  replaceCodeAndParse: (code: string) => void;
   setFormat: (format: SchemaFormat) => void;
   parseCode: () => void;
   loadSample: (format: "drizzle" | "prisma" | "sql") => void;
@@ -134,6 +135,15 @@ export const useDiagramStore = create<DiagramState>()(
           code,
           format: detectedFormat !== "auto" ? detectedFormat : get().format,
         });
+      },
+
+      replaceCodeAndParse: (code) => {
+        const detectedFormat = detectSchemaFormat(code);
+        set({
+          code,
+          format: detectedFormat !== "auto" ? detectedFormat : get().format,
+        });
+        get().parseCode();
       },
 
       setFormat: (format) => set({ format }),
