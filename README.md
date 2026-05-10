@@ -17,6 +17,8 @@
 - **Real-time Parsing**: See changes in the diagram instantly as you edit the code.
 - **Code Editor**: Integrated Monaco Editor for a premium coding experience.
 - **Flexible Workspace Layout**: Move the editor between bottom, left, and right positions, and place the sidebar on either side.
+- **Agent Chat**: Use your own provider API key with OpenAI-compatible providers, Claude/Anthropic, DeepSeek, Kimi, Gemini, OpenRouter, Groq, Mistral, xAI, or custom endpoints to generate or refine schemas through chat and apply them directly to the editor.
+- **Code Agent Handoff**: Export the current schema, parsed metadata, diagram context, and implementation instructions as a curl-readable handoff bundle for coding agents.
 - **Privacy Focused**: All parsing happens client-side. Your schema code never leaves your browser.
 
 ## 🛠️ Tech Stack
@@ -80,6 +82,8 @@ Follow these steps to run SchemaLens locally on your machine.
 3. Paste your schema code into the editor and move it to the bottom, left, or right as needed.
 4. Watch the diagram generate automatically!
 5. Drag tables to rearrange them.
+6. Open Agent Chat, choose a provider, enter your API key, and ask the agent to create or update a schema. Keys are stored only in the current tab's `sessionStorage` until the tab closes; returned schema code blocks are applied to the editor automatically.
+7. Use **Hand off to Code Agent** to copy a `curl` command that writes a `schema-lens-handoff.json` bundle for coding agents to read and apply in another project.
 
 ## 🤝 Contributing
 

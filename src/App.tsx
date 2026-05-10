@@ -1,8 +1,9 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
-import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { Bot, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { CodeEditor } from "@/components/CodeEditor";
 import { DiagramCanvas } from "@/components/DiagramCanvas";
+import { AgentChat } from "@/components/AgentChat";
 import {
   useDiagramStore,
   type EditorPosition,
@@ -64,6 +65,7 @@ function SegmentedControl<T extends string>({
 
 function App() {
   const [editorExpanded, setEditorExpanded] = useState(true);
+  const [agentChatOpen, setAgentChatOpen] = useState(false);
   const {
     parseCode,
     sidebarPosition,
@@ -180,6 +182,15 @@ function App() {
             </div>
 
             <button
+              onClick={() => setAgentChatOpen(true)}
+              aria-label="Open Agent Chat"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-accent-blue hover:bg-bg-elevated font-medium rounded-lg transition-colors"
+            >
+              <Bot className="w-4 h-4" />
+              Agent Chat
+            </button>
+
+            <button
               onClick={parseCode}
               aria-label="Regenerate diagram"
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-accent-green hover:bg-accent-green-light text-white font-medium rounded-lg transition-colors"
@@ -243,6 +254,12 @@ function App() {
       </div>
 
       {sidebarPosition === "right" && <Sidebar />}
+
+      <AgentChat
+        isOpen={agentChatOpen}
+        onClose={() => setAgentChatOpen(false)}
+        onSchemaApplied={() => setEditorExpanded(true)}
+      />
     </div>
   );
 }
